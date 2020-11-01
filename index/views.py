@@ -47,9 +47,69 @@ class ConfessionAPIView(APIView):
 class LikeAPIView(APIView):
     def post(self, request: Request):
         try:
-            confession_id = request.data['id']
+            confession_id = request.data['confession']
             confession = models.Confession.objects.get(id=confession_id)
             models.Like.objects.create(confession=confession)
+            return Response(status=status.HTTP_201_CREATED)
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+
+class CommentAPIView(APIView):
+    def get(self, request: Request):
+        """Get the specified page of comments.
+
+        Query:
+
+                confession  int - id of the confessoin
+                page        int
+                
+        Returns:
+
+                {
+                    "data": [
+                        {
+                            "id": int,
+                            "text": str,
+                            "creation_time": str
+                        },
+                        ...
+                    ],
+                    "total_pages": int
+                }
+
+        """
+        try:
+            confession_id = request.query_params['confession']
+            requested_page = int(request.query_params.get('page', 1))
+
+            confession = models.Confession.objects.get(id=confession_id)
+            data = confession.comment_set.order_by('-id')
+            paginator = Paginator(data, 5)
+            data = paginator.get_page(requested_page)
+
+            serializer = serializers.CommentSerializer(data, many=True)
+            return Response({
+                "data": serializer.data,
+                "total_pages": paginator.num_pages,
+            })
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request: Request):
+        """Create a comment.
+
+        Data: 
+
+                confession  int - id of the confession
+                text        str
+        """
+        try:
+            confession_id = request.data['confession']
+            confession = models.Confession.objects.get(id=confession_id)
+            serializer = serializers.CommentSerializer(data=request.data)
+            assert serializer.is_valid()
+            serializer.save(confession=confession)
             return Response(status=status.HTTP_201_CREATED)
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)

@@ -6,7 +6,13 @@ from . import models
 class PersonSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Person
-        fields = ('nickname', 'sex')
+        fields = ('nickname', 'sex',)
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Comment
+        fields = ('id', 'text', 'creation_time',)
 
 
 class ConfessionSerializer(serializers.ModelSerializer):
@@ -15,4 +21,4 @@ class ConfessionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Confession
-        fields = ('id', 'sender', 'receiver', 'creation_time', 'text', 'like')
+        fields = ('id', 'sender', 'receiver', 'creation_time', 'text', 'likes', 'comments')
