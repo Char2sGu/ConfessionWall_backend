@@ -1,4 +1,4 @@
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Count
 from django.core.paginator import Paginator
 
 from rest_framework.views import APIView
@@ -11,12 +11,24 @@ from . import models, serializers
 
 class ConfessionAPIView(APIView):
     def get(self, request: Request):
+        """Get a page of confessions.
+        """
+        page = int(request.query_params.get('page', 1))
+        sort = request.query_params.get('sort', 'latest')
+        try: # convert into params
+            sort = {'latest': ('-id',), 'earlest': ('id',),
+                    'hottest': ('-likes', '-comments',), 'coldest': ('likes', 'comments',)}[sort]
+        except KeyError: # unsupported sort
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
         queryset: QuerySet = models.Confession.objects.all()
-        queryset = queryset.order_by('-id')
+        queryset = queryset.annotate(
+            likes=Count('like', distinct=True),
+            comments=Count('comment', distinct=True)
+        ).order_by(*sort)
 
         paginator = Paginator(queryset, 10)
-        requested_pagenum = int(request.query_params.get('page', 1))
-        data = paginator.get_page(requested_pagenum)
+        data = paginator.get_page(page)
 
         serializer = serializers.ConfessionSerializer(data, many=True)
         return Response({
@@ -25,6 +37,8 @@ class ConfessionAPIView(APIView):
         })
 
     def post(self, request: Request):
+        """Create a confession.
+        """
         serializer = serializers.ConfessionSerializer(data=request.data)
         if serializer.is_valid() and 'sender' in request.data and 'receiver' in request.data:
             sender = self.get_person(request.data['sender'])
@@ -34,8 +48,14 @@ class ConfessionAPIView(APIView):
         return Response(status=status.HTTP_400_BAD_REQUEST)
 
     def get_person(self, data):
+        """Get the `Person` object by using `data['nickname']` as 
+        its primary key if it exists, otherwise create it. 
+        This will update `Person.realname` if `data['realname']` 
+        is a different value.
+        """
         try:
-            person: models.Person = models.Person.objects.get(nickname=data['nickname'])
+            person: models.Person = models.Person.objects.get(
+                nickname=data['nickname'])
             if person.realname != data['realname']:
                 person.realname = data['realname']
                 person.save()
@@ -46,6 +66,8 @@ class ConfessionAPIView(APIView):
 
 class LikeAPIView(APIView):
     def post(self, request: Request):
+        """Create a like.
+        """
         try:
             confession_id = request.data['confession']
             confession = models.Confession.objects.get(id=confession_id)
@@ -58,26 +80,6 @@ class LikeAPIView(APIView):
 class CommentAPIView(APIView):
     def get(self, request: Request):
         """Get the specified page of comments.
-
-        Query:
-
-                confession  int - id of the confessoin
-                page        int
-                
-        Returns:
-
-                {
-                    "data": [
-                        {
-                            "id": int,
-                            "text": str,
-                            "creation_time": str
-                        },
-                        ...
-                    ],
-                    "total_pages": int
-                }
-
         """
         try:
             confession_id = request.query_params['confession']
@@ -98,11 +100,6 @@ class CommentAPIView(APIView):
 
     def post(self, request: Request):
         """Create a comment.
-
-        Data: 
-
-                confession  int - id of the confession
-                text        str
         """
         try:
             confession_id = request.data['confession']

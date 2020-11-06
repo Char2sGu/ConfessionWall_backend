@@ -19,16 +19,10 @@ class Confession(models.Model):
     creation_time = models.DateTimeField(auto_now=True)
     text = models.TextField()
 
-    @property
-    def likes(self):
-        return self.like_set.count
-
-    @property
-    def comments(self):
-        return self.comment_set.count
-
     def __str__(self):
-        return f"[ {self.sender.nickname} to {self.receiver.nickname} with {self.likes()} likes and {self.comments()} comments @ {self.creation_time} ]"
+        likes = self.like_set.count()
+        comments = self.comment_set.count()
+        return f"[ {self.sender.nickname} to {self.receiver.nickname} with {likes} likes and {comments} comments @ {self.creation_time} ]"
 
 
 class Comment(models.Model):
