@@ -5,7 +5,7 @@ class Person(models.Model):
     nickname = models.CharField(max_length=30, primary_key=True)
     realname = models.CharField(max_length=10)
     sex = models.CharField(max_length=1, choices=[
-        ('m', 'Male'), ('f', 'Female')
+        ('m', 'Male'), ('f', 'Female'), ('', 'Unknow')
     ])
     creation_time = models.DateTimeField(auto_now=True)
 
