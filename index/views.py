@@ -67,7 +67,7 @@ class ConfessionPageAPIView(APIView):
             comments=Count('comment', distinct=True)
         ).order_by(*sort)
 
-        paginator = Paginator(queryset, 10)
+        paginator = Paginator(queryset, 5)
         data = paginator.get_page(page)
 
         serializer = serializers.ConfessionSerializer(data, many=True)
