@@ -11,30 +11,15 @@ from . import models, serializers
 
 class ConfessionAPIView(APIView):
     def get(self, request: Request):
-        """Get a page of confessions.
+        """Get a confession.
         """
-        page = int(request.query_params.get('page', 1))
-        sort = request.query_params.get('sort', 'latest')
-        try: # convert into params
-            sort = {'latest': ('-id',), 'earlest': ('id',),
-                    'hottest': ('-likes', '-comments',), 'coldest': ('likes', 'comments',)}[sort]
-        except KeyError: # unsupported sort
+        try:
+            confession = request.query_params['id']
+        except KeyError:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-
-        queryset: QuerySet = models.Confession.objects.all()
-        queryset = queryset.annotate(
-            likes=Count('like', distinct=True),
-            comments=Count('comment', distinct=True)
-        ).order_by(*sort)
-
-        paginator = Paginator(queryset, 10)
-        data = paginator.get_page(page)
-
-        serializer = serializers.ConfessionSerializer(data, many=True)
-        return Response({
-            'data': serializer.data,
-            'total_pages': paginator.num_pages,
-        })
+        confession = models.Confession.objects.get(id=confession)
+        serializer = serializers.ConfessionSerializer(instance=confession)
+        return Response(serializer.data)
 
     def post(self, request: Request):
         """Create a confession.
@@ -64,6 +49,35 @@ class ConfessionAPIView(APIView):
         return person
 
 
+class ConfessionPageAPIView(APIView):
+    def get(self, request: Request):
+        """Get a page of confessions.
+        """
+        page = int(request.query_params.get('page', 1))
+        sort = request.query_params.get('sort', 'latest')
+        try: # convert into params
+            sort = {'latest': ('-id',), 'earlest': ('id',),
+                    'hottest': ('-likes', '-comments',), 'coldest': ('likes', 'comments',)}[sort]
+        except KeyError: # unsupported sort
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+        queryset: QuerySet = models.Confession.objects.all()
+        queryset = queryset.annotate(
+            likes=Count('like', distinct=True),
+            comments=Count('comment', distinct=True)
+        ).order_by(*sort)
+
+        paginator = Paginator(queryset, 10)
+        data = paginator.get_page(page)
+
+        serializer = serializers.ConfessionSerializer(data, many=True)
+        return Response({
+            'data': serializer.data,
+            'total_pages': paginator.num_pages,
+        })
+
+
+
 class LikeAPIView(APIView):
     def post(self, request: Request):
         """Create a like.
@@ -78,8 +92,23 @@ class LikeAPIView(APIView):
 
 
 class CommentAPIView(APIView):
+    def post(self, request: Request):
+        """Create a comment.
+        """
+        try:
+            confession_id = request.data['confession']
+            confession = models.Confession.objects.get(id=confession_id)
+            serializer = serializers.CommentSerializer(data=request.data)
+            assert serializer.is_valid()
+            serializer.save(confession=confession)
+            return Response(status=status.HTTP_201_CREATED)
+        except:
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+
+
+class CommentPageAPIView(APIView):
     def get(self, request: Request):
-        """Get the specified page of comments.
+        """Get a page of comments.
         """
         try:
             confession_id = request.query_params['confession']
@@ -98,15 +127,3 @@ class CommentAPIView(APIView):
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
-    def post(self, request: Request):
-        """Create a comment.
-        """
-        try:
-            confession_id = request.data['confession']
-            confession = models.Confession.objects.get(id=confession_id)
-            serializer = serializers.CommentSerializer(data=request.data)
-            assert serializer.is_valid()
-            serializer.save(confession=confession)
-            return Response(status=status.HTTP_201_CREATED)
-        except:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
