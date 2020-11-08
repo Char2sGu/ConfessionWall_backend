@@ -17,7 +17,7 @@ class Confession(models.Model):
     sender = models.ForeignKey(Person, models.CASCADE, 'sender_id')
     receiver = models.ForeignKey(Person, models.CASCADE, 'receiver_id')
     creation_time = models.DateTimeField(auto_now=True)
-    text = models.TextField()
+    text = models.TextField(max_length=2000)
 
     def __str__(self):
         likes = self.like_set.count()
@@ -27,7 +27,7 @@ class Confession(models.Model):
 
 class Comment(models.Model):
     confession = models.ForeignKey(Confession, models.CASCADE)
-    text = models.TextField()
+    text = models.TextField(max_length=50)
     creation_time = models.DateTimeField(auto_now=True)
 
     def __str__(self):
