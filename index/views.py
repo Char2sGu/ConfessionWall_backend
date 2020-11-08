@@ -17,7 +17,10 @@ class ConfessionAPIView(APIView):
             confession = request.query_params['id']
         except KeyError:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        confession = models.Confession.objects.get(id=confession)
+        confession = models.Confession.objects.annotate(
+            likes=Count('like', distinct=True),
+            comments=Count('comment', distinct=True)
+        ).get(id=confession)
         serializer = serializers.ConfessionSerializer(instance=confession)
         return Response(serializer.data)
 
@@ -55,10 +58,10 @@ class ConfessionPageAPIView(APIView):
         """
         page = int(request.query_params.get('page', 1))
         sort = request.query_params.get('sort', 'latest')
-        try: # convert into params
+        try:  # convert into params
             sort = {'latest': ('-id',), 'earlest': ('id',),
                     'hottest': ('-likes', '-comments',), 'coldest': ('likes', 'comments',)}[sort]
-        except KeyError: # unsupported sort
+        except KeyError:  # unsupported sort
             return Response(status=status.HTTP_400_BAD_REQUEST)
 
         queryset: QuerySet = models.Confession.objects.all()
@@ -75,7 +78,6 @@ class ConfessionPageAPIView(APIView):
             'data': serializer.data,
             'total_pages': paginator.num_pages,
         })
-
 
 
 class LikeAPIView(APIView):
@@ -126,4 +128,3 @@ class CommentPageAPIView(APIView):
             })
         except:
             return Response(status=status.HTTP_400_BAD_REQUEST)
-
