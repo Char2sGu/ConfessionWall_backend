@@ -11,6 +11,27 @@ from rest_framework import status
 from . import models, serializers
 
 
+def login_required(superuser=False):
+    def decorator(fn):
+        def wrap(self, request: Request, *args, **kwargs):
+            if type(request.user) == AnonymousUser or superuser and not request.user.is_superuser:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            return fn(self, request, *args, **kwargs)
+        return wrap
+    return decorator
+
+
+def log(fn):
+    def wrap(self, request: Request, *args, **kwargs):
+        print(f"""
+        View: {self}
+        User: {request.user}
+        {args} {kwargs}
+        """)
+        return fn(self, request, *args, **kwargs)
+    return wrap
+
+
 class ConfessionAPIView(APIView):
     def get(self, request: Request, confession: int = None):
         """Get a confession.
@@ -56,13 +77,12 @@ class ConfessionAPIView(APIView):
             person = models.Person.objects.create(**data)
         return person
 
+    @login_required(True)
     def delete(self, request: Request, confession: int = None):
         """Delete a confession.
         """
         if not confession:
             return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        if type(request.user) == AnonymousUser:
-            return Response(status=status.HTTP_403_FORBIDDEN)
         try:
             models.Confession.objects.get(id=confession).delete()
         except:
@@ -120,19 +140,17 @@ class CommentAPIView(APIView):
         serializer.save(confession=confession)
         return Response(status=status.HTTP_201_CREATED)
 
+    @login_required(True)
     def delete(self, request: Request, confession: int, comment: int = None):
         """Delete a comment.
         """
         if not comment:
             return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        if type(request.user) == AnonymousUser:
-            return Response(status=status.HTTP_403_FORBIDDEN)
         try:
             models.Comment.objects.get(id=comment).delete()
         except:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response()
-        
 
 
 class CommentPageAPIView(APIView):
