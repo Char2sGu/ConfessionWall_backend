@@ -1,18 +1,16 @@
 from django.urls import path
-
+from rest_framework.routers import DefaultRouter
 from . import views
 
 
+router = DefaultRouter()
+router.register('confessions', views.ConfessionAPIViewSet)
+router.register('people', views.PersonAPIViewSet)
+router.register('likes', views.LikeAPIViewSet)
+router.register('comments', views.CommentAPIViewSet)
+
 urlpatterns = [
-    path('confessions', views.ConfessionAPIView.as_view()),
-    path('confessions/<int:confession>', views.ConfessionAPIView.as_view()),
-    path('confessions/pages/<int:page>', views.ConfessionPageAPIView.as_view()),
-
-    path('confessions/<int:confession>/likes', views.LikeAPIView.as_view()),
-
-    path('confessions/<int:confession>/comments', views.CommentAPIView.as_view()),
-    path('confessions/<int:confession>/comments/<int:comment>', views.CommentAPIView.as_view()),
-    path('confessions/<int:confession>/comments/pages/<int:page>', views.CommentPageAPIView.as_view()),
-
     path('auth', views.AuthAPIView.as_view()),
 ]
+
+urlpatterns += router.urls

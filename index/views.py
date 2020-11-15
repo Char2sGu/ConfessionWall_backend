@@ -1,172 +1,88 @@
 from django.db.models import QuerySet, Count
-from django.core.paginator import Paginator
-from django.contrib.auth.models import User, AnonymousUser
 from django.contrib import auth
 
+from rest_framework.exceptions import ParseError, NotFound, AuthenticationFailed
 from rest_framework.views import APIView
+from rest_framework.viewsets import GenericViewSet
+from rest_framework.decorators import action
+from rest_framework.mixins import ListModelMixin, RetrieveModelMixin, CreateModelMixin, DestroyModelMixin
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework import status
+from rest_framework.permissions import IsAdminUser
 
 from . import models, serializers
 
 
-def login_required(superuser=False):
-    def decorator(fn):
-        def wrap(self, request: Request, *args, **kwargs):
-            if type(request.user) == AnonymousUser or superuser and not request.user.is_superuser:
-                return Response(status=status.HTTP_403_FORBIDDEN)
-            return fn(self, request, *args, **kwargs)
-        return wrap
-    return decorator
+class ConfessionAPIViewSet(RetrieveModelMixin, CreateModelMixin, ListModelMixin, DestroyModelMixin, GenericViewSet):
+    serializer_class = serializers.ConfessionSerializer
+    queryset = models.Confession.objects.all()
 
-
-def log(fn):
-    def wrap(self, request: Request, *args, **kwargs):
-        print(f"""
-        View: {self}
-        User: {request.user}
-        {args} {kwargs}
-        """)
-        return fn(self, request, *args, **kwargs)
-    return wrap
-
-
-class ConfessionAPIView(APIView):
-    def get(self, request: Request, confession: int = None):
-        """Get a confession.
-        """
-        if not confession:
-            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    def get_queryset(self):
         try:
-            confession = models.Confession.objects.annotate(
-                likes=Count('like', distinct=True),
-                comments=Count('comment', distinct=True)
-            ).get(id=confession)
-        except:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        serializer = serializers.ConfessionSerializer(instance=confession)
-        return Response(serializer.data)
-
-    def post(self, request: Request, confession: int = None):
-        """Create a confession.
-        """
-        if confession:
-            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        serializer = serializers.ConfessionSerializer(data=request.data)
-        if serializer.is_valid() and 'sender' in request.data and 'receiver' in request.data:
-            sender = self.get_person(request.data['sender'])
-            receiver = self.get_person(request.data['receiver'])
-            serializer.save(sender=sender, receiver=receiver)
-            return Response(status=status.HTTP_201_CREATED)
-        return Response(status=status.HTTP_400_BAD_REQUEST)
-
-    def get_person(self, data):
-        """Get the `Person` object by using `data['nickname']` as
-        its primary key if it exists, otherwise create it.
-        This will update `Person.realname` if `data['realname']`
-        is a different value.
-        """
-        try:
-            person: models.Person = models.Person.objects.get(
-                nickname=data['nickname'])
-            if person.realname != data['realname']:
-                person.realname = data['realname']
-                person.save()
-        except:
-            person = models.Person.objects.create(**data)
-        return person
-
-    @login_required(True)
-    def delete(self, request: Request, confession: int = None):
-        """Delete a confession.
-        """
-        if not confession:
-            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        try:
-            models.Confession.objects.get(id=confession).delete()
-        except:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        return Response()
-
-
-class ConfessionPageAPIView(APIView):
-    def get(self, request: Request, page: int):
-        """Get a page of confessions.
-        """
-        sort = request.query_params.get('sort', 'latest')
-        try:  # convert into params
+            sort = self.request.query_params.get('sort', 'latest')
             sort = {'latest': ('-id',), 'earlest': ('id',),
                     'hottest': ('-likes', '-comments',), 'coldest': ('likes', 'comments',)}[sort]
-        except KeyError:  # unsupported sort
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+        except:
+            raise ParseError()
 
-        queryset: QuerySet = models.Confession.objects.all()
-        queryset = queryset.annotate(
+        return models.Confession.objects.annotate(
             likes=Count('like', distinct=True),
             comments=Count('comment', distinct=True)
         ).order_by(*sort)
 
-        paginator = Paginator(queryset, 5)
-        data = paginator.get_page(page)
-
-        serializer = serializers.ConfessionSerializer(data, many=True)
-        return Response({
-            'data': serializer.data,
-            'total_pages': paginator.num_pages,
-        })
+    def get_permissions(self):
+        if self.action == 'destroy':
+            return [IsAdminUser()]
+        else:
+            return super().get_permissions()
 
 
-class LikeAPIView(APIView):
-    def post(self, request: Request, confession: int):
-        """Create a like.
-        """
-        confession: models.Confession = models.Confession.objects.get(
-            id=confession)
-        models.Like.objects.create(confession=confession)
-        return Response(status=status.HTTP_201_CREATED)
+class PersonAPIViewSet(RetrieveModelMixin, CreateModelMixin, GenericViewSet):
+    serializer_class = serializers.PersonSerializer
+    queryset = models.Person.objects.all()
 
-
-class CommentAPIView(APIView):
-    def post(self, request: Request, confession: int, comment: int = None):
-        """Create a comment.
-        """
-        if comment:
-            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
-        confession: models.Confession = models.Confession.objects.get(
-            id=confession)
-        serializer = serializers.CommentSerializer(data=request.data)
-        serializer.is_valid(True)
-        serializer.save(confession=confession)
-        return Response(status=status.HTTP_201_CREATED)
-
-    @login_required(True)
-    def delete(self, request: Request, confession: int, comment: int = None):
-        """Delete a comment.
-        """
-        if not comment:
-            return Response(status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    @action(detail=False)
+    def id(self, request: Request):
         try:
-            models.Comment.objects.get(id=comment).delete()
-        except:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        return Response()
+            query_params = dict(request.query_params.items())
+            query_params = {
+                'display_name':  query_params['display_name'],
+                'sex': query_params['sex']
+            }
+            obj = models.Person.objects.get(**query_params)
+        except KeyError as e:
+            raise ParseError(e)
+        except models.Person.DoesNotExist as e:
+            raise NotFound(e)
+        return Response(obj.pk)
 
 
-class CommentPageAPIView(APIView):
-    def get(self, request: Request, confession: int, page: int):
-        """Get a page of comments.
-        """
-        confession: models.Confession = models.Confession.objects.get(
-            id=confession)
-        data = confession.comment_set.order_by('-id')
-        paginator = Paginator(data, 5)
-        data = paginator.get_page(page)
-        serializer = serializers.CommentSerializer(data, many=True)
-        return Response({
-            "data": serializer.data,
-            "total_pages": paginator.num_pages,
-        })
+class LikeAPIViewSet(CreateModelMixin, GenericViewSet):
+    serializer_class = serializers.LikeSerializer
+    queryset = models.Like.objects.all()
+
+
+class CommentAPIViewSet(ListModelMixin, CreateModelMixin, DestroyModelMixin, GenericViewSet):
+    serializer_class = serializers.CommentSerializer
+    queryset = models.Comment.objects.all()
+
+    def get_queryset(self):
+        if self.action == 'list':
+            try:
+                confession = self.request.query_params['confession']
+            except KeyError as e:
+                raise ParseError(e)
+            queryset: QuerySet = models.Comment.objects.all()
+            queryset = queryset.filter(confession=confession)
+            return queryset
+        else:
+            return super().get_queryset()
+
+    def get_permissions(self):
+        if self.action == 'destroy':
+            return [IsAdminUser()]
+        else:
+            return super().get_permissions()
 
 
 class AuthAPIView(APIView):
@@ -175,15 +91,15 @@ class AuthAPIView(APIView):
             try:
                 username: str = request.data['username']
                 password: str = request.data['password']
-            except KeyError:
-                return Response({'detail': 'missing params'}, status=status.HTTP_400_BAD_REQUEST)
+            except KeyError as e:
+                raise ParseError(e)
             if user := auth.authenticate(username=username, password=password):
                 auth.login(request, user)
-                return Response()
+                return Response(str(user))
             else:
-                return Response({'detail': 'failed'}, status=status.HTTP_400_BAD_REQUEST)
+                raise AuthenticationFailed()
         elif request.data['action'] == 'logout':
             auth.logout(request)
-            return Response()
+            return Response(str(request.user))
         else:
-            return Response(status=status.HTTP_400_BAD_REQUEST)
+            raise ParseError()
