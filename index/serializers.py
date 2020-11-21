@@ -23,8 +23,10 @@ class CommentSerializer(serializers.ModelSerializer):
 class ConfessionSerializer(serializers.ModelSerializer):
     likes = serializers.ReadOnlyField()
     comments = serializers.ReadOnlyField()
+    sender_detail = PersonSerializer(source='sender', read_only=True)
+    receiver_detail = PersonSerializer(source='receiver', read_only=True)
 
     class Meta:
         model = models.Confession
-        fields = ('id', 'sender', 'receiver', 'creation_time',
-                  'text', 'likes', 'comments')
+        fields = ('id', 'sender', 'receiver', 'creation_time', 'text') + \
+            ('likes', 'comments', 'sender_detail', 'receiver_detail')

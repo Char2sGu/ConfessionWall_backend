@@ -1,13 +1,13 @@
 from typing import Iterable
 
 from django.db.models import Count
+from django.db.utils import IntegrityError
 from django.http.request import QueryDict
 from django.contrib import auth
 
-from rest_framework.exceptions import ParseError, NotFound, AuthenticationFailed
+from rest_framework.exceptions import ParseError, AuthenticationFailed
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
-from rest_framework.decorators import action
 from rest_framework.mixins import ListModelMixin, RetrieveModelMixin, CreateModelMixin, DestroyModelMixin
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -43,7 +43,8 @@ class ConfessionAPIViewSet(GenericViewSet, RetrieveModelMixin, CreateModelMixin,
                 comments=Count('comment', distinct=True)
             ).order_by(*sort)
             if person:
-                queryset = queryset.filter(sender=person) | queryset.filter(receiver=person)
+                queryset = queryset.filter(
+                    sender=person) | queryset.filter(receiver=person)
         except (KeyError, ValueError) as e:
             raise ParseError(e)
         return queryset
@@ -70,20 +71,14 @@ class PersonAPIViewSet(GenericViewSet, RetrieveModelMixin, CreateModelMixin, Lis
         except AssertionError as e:
             raise ParseError(e)
 
-
-    @action(detail=False)
-    def id(self, request: Request):
+    def create(self, request: Request, *args, **kwargs):
         try:
-            filter_params = extract_items(
-                request.query_params,
-                ('display_name', 'sex'),
-                safe=False)
-            obj = models.Person.objects.get(**filter_params)
-        except KeyError as e:
-            raise ParseError(e)
-        except models.Person.DoesNotExist as e:
-            raise NotFound(e)
-        return Response(obj.pk)
+            return super().create(request, *args, **kwargs)
+        except IntegrityError as e:
+            data = extract_items(request.data, ['display_name', 'sex'])
+            instance = models.Person.objects.get(**data)
+            data = self.get_serializer(instance=instance).data
+            return Response(data)
 
 
 class LikeAPIViewSet(GenericViewSet, CreateModelMixin):
@@ -115,7 +110,8 @@ class CommentAPIViewSet(GenericViewSet, ListModelMixin, CreateModelMixin, Destro
 
 class AuthAPIView(APIView):
     def post(self, request: Request):
-        if request.data['action'] == 'login':
+        action = request.data.get('action', 'logout')
+        if action == 'login':
             try:
                 username: str = request.data['username']
                 password: str = request.data['password']
@@ -126,7 +122,7 @@ class AuthAPIView(APIView):
                 return Response(str(user))
             else:
                 raise AuthenticationFailed()
-        elif request.data['action'] == 'logout':
+        elif action == 'logout':
             auth.logout(request)
             return Response(str(request.user))
         else:
